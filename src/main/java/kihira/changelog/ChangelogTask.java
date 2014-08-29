@@ -2,13 +2,17 @@ package kihira.changelog;
 
 import com.google.common.base.Strings;
 import com.google.common.io.CharStreams;
+import com.google.common.io.Files;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.OutputFile;
+import org.gradle.api.tasks.TaskAction;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
@@ -20,28 +24,27 @@ public class ChangelogTask extends DefaultTask {
 
     private String authHeader;
 
-    @Input
-    private String server; //This should include the auth method (ie server/httpAuth or server/guestAuth)
-
+    @Input String server; //This should include the auth method (ie server/httpAuth or server/guestAuth)
+    @Input String projectName;
     @Input boolean showCommit;
-
     @Input int historyLimit;
+    @OutputFile File output;
 
-    private void buildChangeLog(String projectLocator) {
+    @TaskAction
+    public void buildChangeLog() throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("Changelog:").append("\n");
 
-        try {
-            List<Integer> buildIDs = getBuilds(projectLocator);
-            int build = 0;
-            for (int buildID : buildIDs) {
-                sb.append(getChanges(buildID));
-                build++;
-                if (build >= this.historyLimit) break;
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+        List<Integer> buildIDs = getBuilds(projectName);
+        int build = 0;
+        for (int buildID : buildIDs) {
+            sb.append(getChanges(buildID));
+            build++;
+            if (build >= this.historyLimit) break;
         }
+        //Add to archives
+        Files.write(sb.toString().getBytes(), output);
+        getProject().getArtifacts().add("archives", output);
     }
 
     private List<Integer> getBuilds(String projectLocator) throws IOException {
@@ -57,7 +60,7 @@ public class ChangelogTask extends DefaultTask {
     }
 
     private StringBuilder getChanges(int buildID) throws IOException {
-        String json = read(new URL(this.server + "/app/rest/changes?locator=build:(pro:" + buildID + ")"));
+        String json = read(new URL(this.server + "/app/rest/changes?locator=build:(" + buildID + ")"));
         List<Integer> changeIDs = new ArrayList<Integer>();
 
         //We just want the id's from the change array
@@ -98,5 +101,25 @@ public class ChangelogTask extends DefaultTask {
             conn.addRequestProperty("Authorization", this.authHeader);
         }
         return CharStreams.toString(new InputStreamReader(conn.getInputStream()));
+    }
+
+    public void setOutput(File output) {
+        this.output = output;
+    }
+
+    public void setProjectName(String projectName) {
+        this.projectName = projectName;
+    }
+
+    public void setServer(String server) {
+        this.server = server;
+    }
+
+    public void setShowCommit(boolean showCommit) {
+        this.showCommit = showCommit;
+    }
+
+    public void setHistoryLimit(int historyLimit) {
+        this.historyLimit = historyLimit;
     }
 }
